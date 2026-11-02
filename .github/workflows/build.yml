@@ -14,14 +14,70 @@ jobs:
           unzip project.zip -d ./
           rm project.zip
           
-          # 1. 降级 AGP 防止找不到 9.5.0 版本
+          # 1. 降级 AGP 到 8.5.0 稳定版
           sed -i 's/agp = "9.5.0-rc01"/agp = "8.5.0"/g' gradle/libs.versions.toml
           
-          # 2. 给 Miuix 仓库注入 Token (直接在 url 那行下面插入认证)
+          # 2. 给 Miuix 仓库注入 Token
           sed -i '/url = uri("https:\/\/maven.pkg.github.com\/compose-miuix-ui\/miuix")/a\            credentials {\n                username = "TakiShiina-BA"\n                password = System.getenv("MIUIX_TOKEN")\n            }' settings.gradle.kts
           
-          # 3. 删掉导致报错的 compileOptions（直接删掉那个代码块）
-          sed -i '/compileOptions {/,/}/d' build-logic/src/main/kotlin/os/kei/buildlogic/AndroidConventions.kt
+          # 3. 暴力重写 AndroidConventions.kt，完美兼容 AGP 8.5.0
+          cat > build-logic/src/main/kotlin/os/kei/buildlogic/AndroidConventions.kt << 'EOF'
+          package os.kei.buildlogic
+
+          import com.android.build.api.dsl.ApplicationExtension
+          import com.android.build.api.dsl.LibraryExtension
+          import org.gradle.api.JavaVersion
+          import org.gradle.api.Project
+          import org.gradle.kotlin.dsl.configure
+          import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+          import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+          internal fun Project.configureAndroidApplication() {
+              extensions.configure<ApplicationExtension> {
+                  compileSdk = 34
+                  defaultConfig {
+                      minSdk = 26
+                      targetSdk = 34
+                  }
+                  compileOptions {
+                      sourceCompatibility = JavaVersion.VERSION_17
+                      targetCompatibility = JavaVersion.VERSION_17
+                  }
+              }
+              tasks.withType<KotlinCompile>().configureEach {
+                  compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+              }
+          }
+
+          internal fun Project.configureAndroidLibrary() {
+              extensions.configure<LibraryExtension> {
+                  compileSdk = 34
+                  defaultConfig { minSdk = 26 }
+                  compileOptions {
+                      sourceCompatibility = JavaVersion.VERSION_17
+                      targetCompatibility = JavaVersion.VERSION_17
+                  }
+              }
+              tasks.withType<KotlinCompile>().configureEach {
+                  compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+              }
+          }
+          EOF
+
+          # 4. 暴力重写 keios.android.compose.gradle.kts，完美兼容 AGP 8.5.0
+          cat > build-logic/src/main/kotlin/keios.android.compose.gradle.kts << 'EOF'
+          import com.android.build.api.dsl.CommonExtension
+          import org.gradle.api.Project
+          import org.gradle.kotlin.dsl.configure
+
+          fun Project.configureCompose() {
+              extensions.configure<CommonExtension<*, *, *, *, *, *>> {
+                  buildFeatures {
+                      compose = true
+                  }
+              }
+          }
+          EOF
           
       - name: Set up JDK 21
         uses: actions/setup-java@v4
