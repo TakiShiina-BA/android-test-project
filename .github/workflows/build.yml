@@ -11,8 +11,71 @@ jobs:
         run: |
           unzip project.zip -d ./
           rm project.zip
-          ls -la
+
+      # 核心魔法：直接重写 settings.gradle.kts，注入 Token 认证
+      - name: Rewrite settings.gradle.kts
+        env:
+          MIUIX_TOKEN: ${{ secrets.MIUIX_TOKEN }}
+        run: |
+          cat > settings.gradle.kts << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven { url = uri("https://jitpack.io") }
+                  maven {
+                      url = uri("https://maven.pkg.github.com/compose-miuix-ui/miuix")
+                      credentials {
+                          username = "TakiShiina-BA"
+                          password = System.getenv("MIUIX_TOKEN")
+                      }
+                      content {
+                          includeGroup("top.yukonga.miuix.kmp")
+                      }
+                  }
+              }
+          }
+          rootProject.name = "KeiOS"
+          includeBuild("build-logic")
+          include(":app")
+          include(":baselineprofile")
+          include(":core-concurrency")
+          include(":core-download")
+          include(":core-io")
+          include(":core-json")
+          include(":core-log")
+          include(":core-notification")
+          include(":core-prefs")
+          include(":core-system")
+          include(":core-versioning")
+          include(":feature-ba")
+          include(":feature-github")
+          include(":feature-github-engine")
+          include(":feature-home")
+          include(":feature-keepalive")
+          include(":feature-mcp")
+          include(":feature-os")
+          include(":feature-webdav")
+          include(":ui-liquid-glass")
+          include(":ui-pip")
+          EOF
           
+          # 自动降级 AGP 版本（防止找不到 9.5.0-rc01 报错）
+          if [ -f gradle/libs.versions.toml ]; then
+            sed -i 's/agp = "9.5.0-rc01"/agp = "8.5.0"/g' gradle/libs.versions.toml
+          fi
+          
+          echo "===== 最终生成的 settings.gradle.kts ====="
+          cat settings.gradle.kts
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
