@@ -9,8 +9,8 @@ jobs:
       
       - name: Unzip Project
         run: |
-          unzip TEST.zip -d ./
-          rm TEST.zip
+          unzip project.zip -d ./
+          rm project.zip
           ls -la
           
       - name: Set up JDK 21
